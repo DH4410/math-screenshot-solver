@@ -1,5 +1,4 @@
 const { ipcRenderer, clipboard } = require('electron');
-const Tesseract = require('tesseract.js');
 const math = require('mathjs');
 
 let currentAnswer = null;
@@ -75,15 +74,8 @@ ipcRenderer.on('process-screenshot', async (_, dataUrl) => {
 });
 
 async function performOCR(imageData) {
-    const result = await Tesseract.recognize(imageData, 'eng', {
-        logger: info => {
-            if (info.status === 'recognizing text') {
-                const pct = Math.round(info.progress * 100);
-                el.solutionText.textContent = `Detecting text… ${pct}%`;
-            }
-        }
-    });
-    return result.data.text;
+    // OCR runs in the main process (worker_threads work there, not in renderer)
+    return await ipcRenderer.invoke('ocr-image', imageData);
 }
 
 function normalizeExpr(str) {
