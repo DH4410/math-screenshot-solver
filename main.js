@@ -2,7 +2,7 @@ const { app, BrowserWindow, globalShortcut, screen, ipcMain, Tray, Menu, desktop
 const path = require('path');
 const Tesseract = require('tesseract.js');
 
-let resultWindow  = null;
+let resultWindow   = null;
 let captureWindows = [];
 let tray = null;
 
@@ -24,7 +24,7 @@ function createTray() {
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Math Screenshot Solver', enabled: false },
         { type: 'separator' },
-        { label: 'Capture', click: openCapture },
+        { label: 'Capture  (Shift+Win+W  or  Ctrl+Shift+Z)', click: openCapture },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
     ]));
@@ -36,22 +36,27 @@ async function openCapture() {
 
     const displays = screen.getAllDisplays();
 
-    // Use each display's physical resolution as the thumbnail size cap
-    const maxW = Math.max(...displays.map(d => Math.round(d.bounds.width  * d.scaleFactor)));
-    const maxH = Math.max(...displays.map(d => Math.round(d.bounds.height * d.scaleFactor)));
+    // Request thumbnails at the max physical resolution so each display gets its native quality.
+    // thumbnailSize is a cap — Electron won't upscale beyond each source's native resolution.
+    const maxPhysW = Math.max(...displays.map(d => Math.round(d.bounds.width  * d.scaleFactor)));
+    const maxPhysH = Math.max(...displays.map(d => Math.round(d.bounds.height * d.scaleFactor)));
 
     let sources;
     try {
-        sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: maxW, height: maxH } });
+        sources = await desktopCapturer.getSources({
+            types: ['screen'],
+            thumbnailSize: { width: maxPhysW, height: maxPhysH }
+        });
     } catch (e) {
         console.error('desktopCapturer failed:', e);
         return;
     }
 
-    // Pre-encode all screenshots before creating any windows
-    const dataUrls = displays.map((d, i) => {
+    // Pre-encode screenshots and record their actual pixel dimensions before creating windows
+    const screenshots = displays.map((d, i) => {
         const src = sources.find(s => String(s.display_id) === String(d.id)) || sources[i] || sources[0];
-        return src.thumbnail.toDataURL();
+        const { width: thumbW, height: thumbH } = src.thumbnail.getSize();
+        return { dataUrl: src.thumbnail.toDataURL(), thumbW, thumbH };
     });
 
     const wins = [];
@@ -59,13 +64,17 @@ async function openCapture() {
     for (let i = 0; i < displays.length; i++) {
         const d = displays[i];
 
-        // One window per display, sized to that display's logical pixel bounds.
-        // Per-monitor windows avoid cross-DPI rendering issues that break the overlay.
+        // On Windows, BrowserWindow width/height are in PHYSICAL pixels (not logical/DIP).
+        // screen.getAllDisplays() bounds are in logical pixels, so multiply by scaleFactor
+        // to get the physical dimensions needed to fill the display.
+        const physW = Math.round(d.bounds.width  * d.scaleFactor);
+        const physH = Math.round(d.bounds.height * d.scaleFactor);
+
         const win = new BrowserWindow({
             x: d.bounds.x,
             y: d.bounds.y,
-            width:  d.bounds.width,
-            height: d.bounds.height,
+            width:  physW,
+            height: physH,
             frame: false,
             transparent: false,
             backgroundColor: '#000000',
@@ -80,23 +89,20 @@ async function openCapture() {
         wins.push(win);
     }
 
-    // Wait for every window to finish loading HTML
+    // Wait for all windows to load
     await Promise.all(wins.map(win => new Promise(resolve => {
         win.webContents.once('did-finish-load', resolve);
     })));
 
-    // Send each window its own screenshot + scale factor
+    // Send each window: its screenshot + actual thumb pixel dimensions for correct crop math
     for (let i = 0; i < wins.length; i++) {
         if (!wins[i].isDestroyed()) {
-            wins[i].webContents.send('init-capture', {
-                screenshotDataUrl: dataUrls[i],
-                scaleFactor: displays[i].scaleFactor
-            });
+            wins[i].webContents.send('init-capture', screenshots[i]);
         }
     }
 
-    // Brief pause so renderers can paint the screenshot before windows become visible
-    await new Promise(r => setTimeout(r, 60));
+    // Let renderers paint the screenshot before revealing the windows
+    await new Promise(r => setTimeout(r, 80));
 
     wins.forEach(w => { if (!w.isDestroyed()) w.show(); });
     if (wins[0] && !wins[0].isDestroyed()) wins[0].focus();
@@ -124,29 +130,31 @@ function showResult(dataUrl) {
 app.whenReady().then(() => {
     createTray();
 
-    const ok1 = globalShortcut.register('Shift+Super+W', openCapture);
-    // Ctrl+Shift+Z as fallback for Bluetooth keyboards where Win key doesn't reach Electron
-    const ok2 = ok1 ? false : globalShortcut.register('CommandOrControl+Shift+Z', openCapture);
+    // Register both hotkeys simultaneously — Win key unreliable on some Bluetooth keyboards
+    const ok1 = globalShortcut.register('Shift+Super+W',           openCapture);
+    const ok2 = globalShortcut.register('CommandOrControl+Shift+Z', openCapture);
 
-    tray.setToolTip(
-        ok1 ? 'Math Screenshot Solver\nShift+Win+W to capture'
-            : ok2 ? 'Math Screenshot Solver\nCtrl+Shift+Z to capture'
-                  : 'Math Screenshot Solver\nClick tray icon to capture'
-    );
+    const active = [ok1 && 'Shift+Win+W', ok2 && 'Ctrl+Shift+Z'].filter(Boolean).join('  or  ');
+    tray.setToolTip(`Math Screenshot Solver\n${active || 'Click tray icon'} to capture`);
 });
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
 
-// OCR runs in main process — renderer worker_threads are unreliable in Electron
+// OCR in main process — worker_threads work reliably here, not in Electron renderer
 ipcMain.handle('ocr-image', async (_, dataUrl) => {
-    const result = await Tesseract.recognize(dataUrl, 'eng');
-    return result.data.text;
+    const worker = await Tesseract.createWorker('eng');
+    await worker.setParameters({
+        tessedit_pageseg_mode: '6',  // treat selection as a uniform block of text
+    });
+    const { data: { text } } = await worker.recognize(dataUrl);
+    await worker.terminate();
+    return text;
 });
 
 ipcMain.on('open-capture',  () => openCapture());
 ipcMain.on('close-capture', () => closeAllCaptureWindows());
 
-// Renderer crops the image itself and sends back a ready data URL
+// Renderer crops and preprocesses the image, then sends the final data URL here
 ipcMain.on('selection-captured', (_, dataUrl) => {
     closeAllCaptureWindows();
     showResult(dataUrl);
