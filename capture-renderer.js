@@ -1,53 +1,63 @@
-const { ipcRenderer, screen } = require('electron');
+const { ipcRenderer } = require('electron');
 
-let isDrawing = false;
+let screenshotDataUrl = null;
+let scaleFactor = 1;
+let isDrawing   = false;
 let startX, startY;
 
-// Virtual desktop origin (may be negative when external monitor is to the left)
-let minX = 0, minY = 0;
-for (const d of screen.getAllDisplays()) {
-    if (d.bounds.x < minX) minX = d.bounds.x;
-    if (d.bounds.y < minY) minY = d.bounds.y;
-}
+const bg   = document.getElementById('bg');
+const dim  = document.getElementById('dim');
+const hint = document.getElementById('hint');
+const sel  = document.getElementById('sel');
 
-const selection = document.getElementById('selection');
+// Main process sends the screenshot for THIS display + its DPI scale factor
+ipcRenderer.on('init-capture', (_, data) => {
+    screenshotDataUrl = data.screenshotDataUrl;
+    scaleFactor       = data.scaleFactor;
+    bg.style.backgroundImage = `url("${data.screenshotDataUrl}")`;
+});
 
 document.addEventListener('mousedown', (e) => {
+    if (!screenshotDataUrl) return;
     isDrawing = true;
     startX = e.clientX;
     startY = e.clientY;
-    document.body.classList.add('selecting');
-    selection.style.cssText = `display:block;left:${startX}px;top:${startY}px;width:0;height:0`;
+    dim.style.display  = 'none';  // selection shadow handles the outside-dim from here
+    hint.style.display = 'none';
+    sel.style.cssText = `display:block;left:${startX}px;top:${startY}px;width:0;height:0`;
 });
 
 document.addEventListener('mousemove', (e) => {
     if (!isDrawing) return;
-    const w    = Math.abs(e.clientX - startX);
-    const h    = Math.abs(e.clientY - startY);
-    const left = Math.min(e.clientX, startX);
-    const top  = Math.min(e.clientY, startY);
-    selection.style.cssText = `display:block;left:${left}px;top:${top}px;width:${w}px;height:${h}px`;
+    const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+    const l = Math.min(e.clientX, startX),  t = Math.min(e.clientY, startY);
+    sel.style.left = l + 'px';  sel.style.top    = t + 'px';
+    sel.style.width = w + 'px'; sel.style.height = h + 'px';
 });
 
 document.addEventListener('mouseup', (e) => {
     if (!isDrawing) return;
     isDrawing = false;
-    document.body.classList.remove('selecting');
 
-    const w    = Math.abs(e.clientX - startX);
-    const h    = Math.abs(e.clientY - startY);
-    const left = Math.min(e.clientX, startX);
-    const top  = Math.min(e.clientY, startY);
+    const w = Math.abs(e.clientX - startX), h = Math.abs(e.clientY - startY);
+    const l = Math.min(e.clientX, startX),  t = Math.min(e.clientY, startY);
 
-    if (w < 10 || h < 10) { ipcRenderer.send('close-capture'); return; }
+    if (w < 5 || h < 5) { ipcRenderer.send('close-capture'); return; }
 
-    // Convert window-relative coords → virtual desktop coords for main process
-    ipcRenderer.send('selection-captured', {
-        left:   left + minX,
-        top:    top  + minY,
-        width:  w,
-        height: h
-    });
+    // Crop the screenshot here in the renderer.
+    // Mouse coords are logical pixels; multiply by scaleFactor to get physical pixels,
+    // which is the resolution of the screenshot thumbnail from desktopCapturer.
+    const canvas = document.createElement('canvas');
+    const cx = Math.round(l * scaleFactor), cy = Math.round(t * scaleFactor);
+    const cw = Math.round(w * scaleFactor), ch = Math.round(h * scaleFactor);
+    canvas.width = cw; canvas.height = ch;
+
+    const img = new Image();
+    img.onload = () => {
+        canvas.getContext('2d').drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
+        ipcRenderer.send('selection-captured', canvas.toDataURL('image/png'));
+    };
+    img.src = screenshotDataUrl;
 });
 
 document.addEventListener('keydown', e => {

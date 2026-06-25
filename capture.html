@@ -1,51 +1,40 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <style>
-        * { margin: 0; padding: 0; box-sizing: border-box; }
+<meta charset="UTF-8">
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { overflow:hidden; width:100vw; height:100vh; cursor:crosshair; user-select:none; }
 
-        body {
-            cursor: crosshair;
-            overflow: hidden;
-            width: 100vw;
-            height: 100vh;
-            /* Dim overlay before user starts dragging */
-            background: rgba(0, 0, 0, 0.32);
-            user-select: none;
-        }
+/* Screenshot fills the entire window as background */
+#bg { position:fixed; inset:0; background-size:100% 100%; background-repeat:no-repeat; }
 
-        /* While dragging, body becomes transparent so only the box-shadow dims outside */
-        body.selecting { background: transparent; }
+/* Semi-transparent dim layer over the screenshot (hidden once dragging starts) */
+#dim { position:fixed; inset:0; background:rgba(0,0,0,0.38); }
 
-        .hint {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            background: rgba(0, 0, 0, 0.65);
-            color: #fff;
-            padding: 10px 24px;
-            border-radius: 6px;
-            font-family: 'Segoe UI', sans-serif;
-            font-size: 14px;
-            pointer-events: none;
-            white-space: nowrap;
-        }
+#hint {
+    position:fixed; top:20px; left:50%; transform:translateX(-50%);
+    background:rgba(0,0,0,0.65); color:#fff;
+    padding:8px 20px; border-radius:6px;
+    font-family:'Segoe UI',sans-serif; font-size:14px;
+    pointer-events:none; white-space:nowrap; z-index:10;
+}
 
-        #selection {
-            position: fixed;
-            display: none;
-            border: 2px solid #4fc3f7;
-            background: transparent;
-            /* The box-shadow creates the darkened area outside the selection */
-            box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.45);
-        }
-    </style>
+/* Selection box: transparent inside, box-shadow dims everything outside */
+#sel {
+    position:fixed; display:none;
+    border:2px solid #4fc3f7;
+    background:transparent;
+    box-shadow:0 0 0 9999px rgba(0,0,0,0.5);
+    z-index:5;
+}
+</style>
 </head>
 <body>
-    <div class="hint">Click and drag to select an area &nbsp;·&nbsp; <kbd style="background:#fff3;padding:2px 6px;border-radius:3px">ESC</kbd> to cancel</div>
-    <div id="selection"></div>
-    <script src="capture-renderer.js"></script>
+<div id="bg"></div>
+<div id="dim"></div>
+<div id="hint">Drag to select &nbsp;·&nbsp; ESC to cancel</div>
+<div id="sel"></div>
+<script src="capture-renderer.js"></script>
 </body>
 </html>

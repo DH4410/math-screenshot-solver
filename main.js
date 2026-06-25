@@ -2,76 +2,116 @@ const { app, BrowserWindow, globalShortcut, screen, ipcMain, Tray, Menu, desktop
 const path = require('path');
 const Tesseract = require('tesseract.js');
 
-let resultWindow = null;
-let captureWindow = null;
+let resultWindow  = null;
+let captureWindows = [];
 let tray = null;
 
 app.setAppUserModelId('com.math-screenshot-solver');
 
 const gotLock = app.requestSingleInstanceLock();
-if (!gotLock) {
-    app.quit();
-} else {
-    app.on('second-instance', () => { openCapture(); });
-}
+if (!gotLock) { app.quit(); }
+else { app.on('second-instance', openCapture); }
 
 app.on('window-all-closed', () => {});
+
+function closeAllCaptureWindows() {
+    for (const w of captureWindows) { if (!w.isDestroyed()) w.close(); }
+    captureWindows = [];
+}
 
 function createTray() {
     tray = new Tray(path.join(__dirname, 'icon.png'));
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Math Screenshot Solver', enabled: false },
         { type: 'separator' },
-        { label: 'Capture  (Shift+Win+W)', click: openCapture },
+        { label: 'Capture', click: openCapture },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
     ]));
     tray.on('click', openCapture);
 }
 
-function openCapture() {
-    if (captureWindow) return;
+async function openCapture() {
+    if (captureWindows.length > 0) return;
 
     const displays = screen.getAllDisplays();
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const d of displays) {
-        minX = Math.min(minX, d.bounds.x);
-        minY = Math.min(minY, d.bounds.y);
-        maxX = Math.max(maxX, d.bounds.x + d.bounds.width);
-        maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
+
+    // Use each display's physical resolution as the thumbnail size cap
+    const maxW = Math.max(...displays.map(d => Math.round(d.bounds.width  * d.scaleFactor)));
+    const maxH = Math.max(...displays.map(d => Math.round(d.bounds.height * d.scaleFactor)));
+
+    let sources;
+    try {
+        sources = await desktopCapturer.getSources({ types: ['screen'], thumbnailSize: { width: maxW, height: maxH } });
+    } catch (e) {
+        console.error('desktopCapturer failed:', e);
+        return;
     }
 
-    captureWindow = new BrowserWindow({
-        x: minX,
-        y: minY,
-        width: maxX - minX,
-        height: maxY - minY,
-        frame: false,
-        transparent: true,
-        alwaysOnTop: true,
-        skipTaskbar: true,
-        webPreferences: { nodeIntegration: true, contextIsolation: false }
+    // Pre-encode all screenshots before creating any windows
+    const dataUrls = displays.map((d, i) => {
+        const src = sources.find(s => String(s.display_id) === String(d.id)) || sources[i] || sources[0];
+        return src.thumbnail.toDataURL();
     });
-    captureWindow.loadFile('capture.html');
-    captureWindow.on('closed', () => { captureWindow = null; });
+
+    const wins = [];
+
+    for (let i = 0; i < displays.length; i++) {
+        const d = displays[i];
+
+        // One window per display, sized to that display's logical pixel bounds.
+        // Per-monitor windows avoid cross-DPI rendering issues that break the overlay.
+        const win = new BrowserWindow({
+            x: d.bounds.x,
+            y: d.bounds.y,
+            width:  d.bounds.width,
+            height: d.bounds.height,
+            frame: false,
+            transparent: false,
+            backgroundColor: '#000000',
+            alwaysOnTop: true,
+            skipTaskbar: true,
+            show: false,
+            webPreferences: { nodeIntegration: true, contextIsolation: false }
+        });
+
+        win.loadFile('capture.html');
+        win.on('closed', () => { captureWindows = captureWindows.filter(w => w !== win); });
+        wins.push(win);
+    }
+
+    // Wait for every window to finish loading HTML
+    await Promise.all(wins.map(win => new Promise(resolve => {
+        win.webContents.once('did-finish-load', resolve);
+    })));
+
+    // Send each window its own screenshot + scale factor
+    for (let i = 0; i < wins.length; i++) {
+        if (!wins[i].isDestroyed()) {
+            wins[i].webContents.send('init-capture', {
+                screenshotDataUrl: dataUrls[i],
+                scaleFactor: displays[i].scaleFactor
+            });
+        }
+    }
+
+    // Brief pause so renderers can paint the screenshot before windows become visible
+    await new Promise(r => setTimeout(r, 60));
+
+    wins.forEach(w => { if (!w.isDestroyed()) w.show(); });
+    if (wins[0] && !wins[0].isDestroyed()) wins[0].focus();
+    captureWindows = wins;
 }
 
 function showResult(dataUrl) {
     if (resultWindow) resultWindow.close();
 
     resultWindow = new BrowserWindow({
-        width: 500,
-        height: 540,
-        frame: true,
-        alwaysOnTop: true,
-        resizable: true,
+        width: 500, height: 540,
+        frame: true, alwaysOnTop: true, resizable: true,
         title: 'Math Solution',
         icon: path.join(__dirname, 'icon.png'),
-        webPreferences: {
-            nodeIntegration: true,
-            contextIsolation: false,
-            nodeIntegrationInWorker: true
-        }
+        webPreferences: { nodeIntegration: true, contextIsolation: false }
     });
     resultWindow.setMenuBarVisibility(false);
     resultWindow.loadFile('index.html');
@@ -84,75 +124,30 @@ function showResult(dataUrl) {
 app.whenReady().then(() => {
     createTray();
 
-    // Try primary hotkey (Shift+Win+W); fall back to Ctrl+Shift+Z for Bluetooth keyboards
-    // that don't pass the Win key through to apps
     const ok1 = globalShortcut.register('Shift+Super+W', openCapture);
-    const ok2 = globalShortcut.register('CommandOrControl+Shift+Z', openCapture);
+    // Ctrl+Shift+Z as fallback for Bluetooth keyboards where Win key doesn't reach Electron
+    const ok2 = ok1 ? false : globalShortcut.register('CommandOrControl+Shift+Z', openCapture);
 
-    const tip = ok1
-        ? 'Math Screenshot Solver\nShift+Win+W to capture'
-        : ok2
-            ? 'Math Screenshot Solver\nCtrl+Shift+Z to capture (Win key unavailable)'
-            : 'Math Screenshot Solver\nClick here to capture';
-    tray.setToolTip(tip);
+    tray.setToolTip(
+        ok1 ? 'Math Screenshot Solver\nShift+Win+W to capture'
+            : ok2 ? 'Math Screenshot Solver\nCtrl+Shift+Z to capture'
+                  : 'Math Screenshot Solver\nClick tray icon to capture'
+    );
 });
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
 
-// OCR runs in the main process — full Node.js supports worker_threads
+// OCR runs in main process — renderer worker_threads are unreliable in Electron
 ipcMain.handle('ocr-image', async (_, dataUrl) => {
     const result = await Tesseract.recognize(dataUrl, 'eng');
     return result.data.text;
 });
 
-// Capture overlay closed without selection
-ipcMain.on('close-capture', () => { if (captureWindow) captureWindow.close(); });
-ipcMain.on('open-capture', openCapture);
+ipcMain.on('open-capture',  () => openCapture());
+ipcMain.on('close-capture', () => closeAllCaptureWindows());
 
-// User finished selecting a region — take screenshot, crop, show result
-ipcMain.on('selection-captured', async (_, { left, top, width, height }) => {
-    if (captureWindow) captureWindow.close();
-
-    const displays = screen.getAllDisplays();
-
-    // Find the display that contains the center of the selection
-    const cx = left + width / 2;
-    const cy = top + height / 2;
-    let targetDisplay = displays[0];
-    for (const d of displays) {
-        if (cx >= d.bounds.x && cx < d.bounds.x + d.bounds.width &&
-            cy >= d.bounds.y && cy < d.bounds.y + d.bounds.height) {
-            targetDisplay = d;
-            break;
-        }
-    }
-
-    const sf = targetDisplay.scaleFactor;
-    const physW = Math.round(targetDisplay.bounds.width  * sf);
-    const physH = Math.round(targetDisplay.bounds.height * sf);
-
-    const sources = await desktopCapturer.getSources({
-        types: ['screen'],
-        thumbnailSize: { width: physW, height: physH }
-    });
-
-    // Match source to display by display_id, fall back to index order
-    let source = sources.find(s => String(s.display_id) === String(targetDisplay.id));
-    if (!source) source = sources[displays.indexOf(targetDisplay)] || sources[0];
-
-    // Convert selection (virtual desktop logical coords) → display-relative physical pixels
-    const relLeft = left - targetDisplay.bounds.x;
-    const relTop  = top  - targetDisplay.bounds.y;
-    const cropX = Math.round(Math.max(0, relLeft * sf));
-    const cropY = Math.round(Math.max(0, relTop  * sf));
-    const cropW = Math.round(Math.min(width  * sf, physW - cropX));
-    const cropH = Math.round(Math.min(height * sf, physH - cropY));
-
-    try {
-        const cropped = source.thumbnail.crop({ x: cropX, y: cropY, width: cropW, height: cropH });
-        showResult(cropped.toDataURL());
-    } catch (err) {
-        console.error('Crop error:', err);
-        showResult(source.thumbnail.toDataURL()); // fallback: full screen
-    }
+// Renderer crops the image itself and sends back a ready data URL
+ipcMain.on('selection-captured', (_, dataUrl) => {
+    closeAllCaptureWindows();
+    showResult(dataUrl);
 });
