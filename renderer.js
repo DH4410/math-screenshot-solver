@@ -124,7 +124,7 @@ async function checkForMathAndSolve(text, imageData) {
         const base64Image = imageData.split(',')[1];
 
         const message = await anthropic.messages.create({
-            model: 'claude-opus-4-20250514',
+            model: 'claude-opus-4-7',
             max_tokens: 4096,
             messages: [
                 {
