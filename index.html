@@ -42,6 +42,17 @@
             padding: 10px;
             background: #f0f0f0;
             border-radius: 8px;
+            line-height: 1.5;
+        }
+
+        .info a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 600;
+        }
+
+        .info a:hover {
+            text-decoration: underline;
         }
 
         .info kbd {
@@ -182,7 +193,8 @@
     <div class="container">
         <h1>📐 Math Screenshot Solver</h1>
         <div class="info">
-            Press <kbd>Ctrl+Shift+S</kbd> to capture a screenshot, or click the button below
+            Press <kbd>Ctrl+Shift+S</kbd> to capture a screenshot, or click the button below.<br>
+            Get your API key from <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>
         </div>
 
         <div class="api-key-section">
@@ -191,6 +203,11 @@
         </div>
 
         <div id="screenshotPreview" class="empty"></div>
+
+        <div id="detectedTextSection" class="result-section hidden">
+            <h3>Detected Text:</h3>
+            <p id="detectedText"></p>
+        </div>
 
         <div id="resultSection" class="result-section hidden">
             <h3>Solution:</h3>

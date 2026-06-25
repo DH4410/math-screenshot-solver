@@ -9,6 +9,8 @@ const API_KEY_STORAGE = 'anthropic_api_key';
 const elements = {
     apiKeyInput: document.getElementById('apiKey'),
     screenshotPreview: document.getElementById('screenshotPreview'),
+    detectedTextSection: document.getElementById('detectedTextSection'),
+    detectedText: document.getElementById('detectedText'),
     resultSection: document.getElementById('resultSection'),
     resultText: document.getElementById('resultText'),
     captureBtn: document.getElementById('captureBtn'),
@@ -76,6 +78,9 @@ ipcRenderer.on('process-screenshot', async (event, dataUrl) => {
             elements.resultText.textContent = 'No text detected in screenshot. Please try again with a clearer image.';
             return;
         }
+
+        elements.detectedTextSection.classList.remove('hidden');
+        elements.detectedText.textContent = ocrResult;
 
         elements.resultText.className = 'loading';
         elements.resultText.textContent = 'Analyzing for math equations...';
@@ -173,7 +178,16 @@ Format your response clearly with the solution(s).`
     } catch (error) {
         console.error('Claude API error:', error);
         elements.resultText.className = 'error';
-        elements.resultText.textContent = `API Error: ${error.message}`;
+
+        if (error.status === 401) {
+            elements.resultText.textContent = 'API Error: Invalid API key. Please check your Anthropic API key.';
+        } else if (error.status === 429) {
+            elements.resultText.textContent = 'API Error: Rate limit exceeded. Please wait a moment and try again.';
+        } else if (error.message.includes('model')) {
+            elements.resultText.textContent = 'API Error: Model not available. Your API key may not have access to Claude Opus 4.7.';
+        } else {
+            elements.resultText.textContent = `API Error: ${error.message}`;
+        }
         return false;
     }
 }
