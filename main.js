@@ -35,8 +35,22 @@ function createTray() {
 
 function openCapture() {
     if (captureWindow) return;
+
+    // Span the capture window across every connected display
+    const displays = screen.getAllDisplays();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const d of displays) {
+        minX = Math.min(minX, d.bounds.x);
+        minY = Math.min(minY, d.bounds.y);
+        maxX = Math.max(maxX, d.bounds.x + d.bounds.width);
+        maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
+    }
+
     captureWindow = new BrowserWindow({
-        fullscreen: true,
+        x: minX,
+        y: minY,
+        width: maxX - minX,
+        height: maxY - minY,
         frame: false,
         transparent: true,
         alwaysOnTop: true,

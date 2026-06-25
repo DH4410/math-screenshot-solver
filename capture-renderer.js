@@ -3,50 +3,74 @@ const { ipcRenderer, desktopCapturer, screen } = require('electron');
 let isDrawing = false;
 let startX, startY;
 let canvas, ctx;
-let screenStream;
 
 async function init() {
     canvas = document.getElementById('canvas');
     ctx = canvas.getContext('2d');
 
-    const { width, height } = screen.getPrimaryDisplay().workAreaSize;
-    canvas.width = width;
-    canvas.height = height;
+    const displays = screen.getAllDisplays();
 
-    try {
-        const sources = await desktopCapturer.getSources({
-            types: ['screen'],
-            thumbnailSize: { width, height }
-        });
+    // Virtual desktop bounding box across all monitors
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const d of displays) {
+        minX = Math.min(minX, d.bounds.x);
+        minY = Math.min(minY, d.bounds.y);
+        maxX = Math.max(maxX, d.bounds.x + d.bounds.width);
+        maxY = Math.max(maxY, d.bounds.y + d.bounds.height);
+    }
 
-        const video = document.createElement('video');
-        video.style.cssText = 'position:fixed;top:-10000px;left:-10000px';
-        document.body.appendChild(video);
+    const totalWidth  = maxX - minX;
+    const totalHeight = maxY - minY;
+
+    canvas.width  = totalWidth;
+    canvas.height = totalHeight;
+
+    // Get one source per screen
+    const sources = await desktopCapturer.getSources({
+        types: ['screen'],
+        thumbnailSize: { width: 200, height: 200 } // thumbnail unused; keep small
+    });
+
+    // Draw each display onto the combined canvas at its virtual-desktop position
+    for (let i = 0; i < sources.length; i++) {
+        const source = sources[i];
+
+        // Match source → display: try display_id (Electron 28+), fall back to order
+        let display = displays.find(d => String(d.id) === String(source.display_id));
+        if (!display) display = displays[i] || displays[0];
+
+        const dx = display.bounds.x - minX;
+        const dy = display.bounds.y - minY;
+        const dw = display.bounds.width;
+        const dh = display.bounds.height;
 
         const stream = await navigator.mediaDevices.getUserMedia({
             audio: false,
             video: {
                 mandatory: {
                     chromeMediaSource: 'desktop',
-                    chromeMediaSourceId: sources[0].id,
-                    minWidth: width,
-                    maxWidth: width,
-                    minHeight: height,
-                    maxHeight: height
+                    chromeMediaSourceId: source.id,
                 }
             }
-        });
+        }).catch(err => { console.error('Screen capture error:', err); return null; });
 
+        if (!stream) continue;
+
+        const video = document.createElement('video');
+        video.style.cssText = 'position:fixed;top:-10000px;left:-10000px';
+        document.body.appendChild(video);
         video.srcObject = stream;
-        video.play();
+        video.play().catch(() => {});
 
-        video.onloadedmetadata = () => {
-            ctx.drawImage(video, 0, 0, width, height);
-            stream.getTracks().forEach(track => track.stop());
-            video.remove();
-        };
-    } catch (error) {
-        console.error('Error capturing screen:', error);
+        await new Promise(resolve => {
+            video.onloadedmetadata = () => {
+                ctx.drawImage(video, dx, dy, dw, dh);
+                stream.getTracks().forEach(t => t.stop());
+                video.remove();
+                resolve();
+            };
+            setTimeout(resolve, 2000); // safety timeout per display
+        });
     }
 }
 
@@ -56,62 +80,38 @@ document.addEventListener('mousedown', (e) => {
     isDrawing = true;
     startX = e.clientX;
     startY = e.clientY;
-    selection.style.left = startX + 'px';
-    selection.style.top = startY + 'px';
-    selection.style.width = '0px';
-    selection.style.height = '0px';
-    selection.style.display = 'block';
+    selection.style.cssText = `display:block;left:${startX}px;top:${startY}px;width:0;height:0`;
 });
 
 document.addEventListener('mousemove', (e) => {
     if (!isDrawing) return;
-
-    const currentX = e.clientX;
-    const currentY = e.clientY;
-
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
-    const left = Math.min(currentX, startX);
-    const top = Math.min(currentY, startY);
-
-    selection.style.left = left + 'px';
-    selection.style.top = top + 'px';
-    selection.style.width = width + 'px';
-    selection.style.height = height + 'px';
+    const w    = Math.abs(e.clientX - startX);
+    const h    = Math.abs(e.clientY - startY);
+    const left = Math.min(e.clientX, startX);
+    const top  = Math.min(e.clientY, startY);
+    selection.style.cssText = `display:block;left:${left}px;top:${top}px;width:${w}px;height:${h}px`;
 });
 
 document.addEventListener('mouseup', (e) => {
     if (!isDrawing) return;
     isDrawing = false;
 
-    const currentX = e.clientX;
-    const currentY = e.clientY;
+    const w    = Math.abs(e.clientX - startX);
+    const h    = Math.abs(e.clientY - startY);
+    const left = Math.min(e.clientX, startX);
+    const top  = Math.min(e.clientY, startY);
 
-    const width = Math.abs(currentX - startX);
-    const height = Math.abs(currentY - startY);
-    const left = Math.min(currentX, startX);
-    const top = Math.min(currentY, startY);
+    if (w < 10 || h < 10) { ipcRenderer.send('close-capture'); return; }
 
-    if (width < 10 || height < 10) {
-        ipcRenderer.send('close-capture');
-        return;
-    }
-
-    const imageData = ctx.getImageData(left, top, width, height);
-    const tempCanvas = document.createElement('canvas');
-    tempCanvas.width = width;
-    tempCanvas.height = height;
-    const tempCtx = tempCanvas.getContext('2d');
-    tempCtx.putImageData(imageData, 0, 0);
-
-    const dataUrl = tempCanvas.toDataURL('image/png');
-    ipcRenderer.send('screenshot-captured', dataUrl);
+    const cropped = document.createElement('canvas');
+    cropped.width  = w;
+    cropped.height = h;
+    cropped.getContext('2d').putImageData(ctx.getImageData(left, top, w, h), 0, 0);
+    ipcRenderer.send('screenshot-captured', cropped.toDataURL('image/png'));
 });
 
-document.addEventListener('keydown', (e) => {
-    if (e.key === 'Escape') {
-        ipcRenderer.send('close-capture');
-    }
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') ipcRenderer.send('close-capture');
 });
 
 init();
