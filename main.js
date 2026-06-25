@@ -1,4 +1,4 @@
-const { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu } = require('electron');
+const { app, BrowserWindow, globalShortcut, screen, ipcMain, Tray, Menu } = require('electron');
 const path = require('path');
 
 let resultWindow = null;
@@ -22,11 +22,11 @@ app.on('window-all-closed', () => {});
 
 function createTray() {
     tray = new Tray(path.join(__dirname, 'icon.png'));
-    tray.setToolTip('Math Screenshot Solver\nCtrl+Win+W to capture');
+    tray.setToolTip('Math Screenshot Solver\nShift+Win+W to capture');
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Math Screenshot Solver', enabled: false },
         { type: 'separator' },
-        { label: 'Capture  (Ctrl+Win+W)', click: openCapture },
+        { label: 'Capture  (Shift+Win+W)', click: openCapture },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
     ]));
@@ -86,8 +86,8 @@ app.whenReady().then(() => {
     createTray();
 
     // Ctrl+Win+W  (Super = Windows key on Windows)
-    const ok = globalShortcut.register('Control+Super+W', openCapture);
-    if (!ok) console.error('Could not register Ctrl+Win+W — key may be taken by the OS');
+    const ok = globalShortcut.register('Shift+Super+W', openCapture);
+    if (!ok) console.error('Could not register Shift+Win+W — key may be taken by the OS');
 });
 
 app.on('will-quit', () => {
