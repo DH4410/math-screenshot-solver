@@ -24,7 +24,7 @@ function createTray() {
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Math Screenshot Solver', enabled: false },
         { type: 'separator' },
-        { label: 'Capture  (Shift+Win+W  or  Ctrl+Shift+Z)', click: openCapture },
+        { label: 'Capture  (Shift+Win+W)', click: openCapture },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
     ]));
@@ -36,8 +36,8 @@ async function openCapture() {
 
     const displays = screen.getAllDisplays();
 
-    // Request thumbnails at the max physical resolution so each display gets its native quality.
-    // thumbnailSize is a cap — Electron won't upscale beyond each source's native resolution.
+    // Request at each display's physical resolution — thumbnailSize is a cap, not a target,
+    // so Electron will not upscale beyond native resolution.
     const maxPhysW = Math.max(...displays.map(d => Math.round(d.bounds.width  * d.scaleFactor)));
     const maxPhysH = Math.max(...displays.map(d => Math.round(d.bounds.height * d.scaleFactor)));
 
@@ -52,7 +52,6 @@ async function openCapture() {
         return;
     }
 
-    // Pre-encode screenshots and record their actual pixel dimensions before creating windows
     const screenshots = displays.map((d, i) => {
         const src = sources.find(s => String(s.display_id) === String(d.id)) || sources[i] || sources[0];
         const { width: thumbW, height: thumbH } = src.thumbnail.getSize();
@@ -64,9 +63,8 @@ async function openCapture() {
     for (let i = 0; i < displays.length; i++) {
         const d = displays[i];
 
-        // On Windows, BrowserWindow width/height are in PHYSICAL pixels (not logical/DIP).
-        // screen.getAllDisplays() bounds are in logical pixels, so multiply by scaleFactor
-        // to get the physical dimensions needed to fill the display.
+        // BrowserWindow uses physical pixels on Windows; d.bounds is in logical (DIP) pixels.
+        // Multiply by scaleFactor to get the correct physical size for this display.
         const physW = Math.round(d.bounds.width  * d.scaleFactor);
         const physH = Math.round(d.bounds.height * d.scaleFactor);
 
@@ -78,30 +76,28 @@ async function openCapture() {
             frame: false,
             transparent: false,
             backgroundColor: '#000000',
-            alwaysOnTop: true,
             skipTaskbar: true,
             show: false,
             webPreferences: { nodeIntegration: true, contextIsolation: false }
         });
 
+        // 'screen-saver' level places our overlay above the Windows taskbar
+        win.setAlwaysOnTop(true, 'screen-saver');
         win.loadFile('capture.html');
         win.on('closed', () => { captureWindows = captureWindows.filter(w => w !== win); });
         wins.push(win);
     }
 
-    // Wait for all windows to load
     await Promise.all(wins.map(win => new Promise(resolve => {
         win.webContents.once('did-finish-load', resolve);
     })));
 
-    // Send each window: its screenshot + actual thumb pixel dimensions for correct crop math
     for (let i = 0; i < wins.length; i++) {
         if (!wins[i].isDestroyed()) {
             wins[i].webContents.send('init-capture', screenshots[i]);
         }
     }
 
-    // Let renderers paint the screenshot before revealing the windows
     await new Promise(r => setTimeout(r, 80));
 
     wins.forEach(w => { if (!w.isDestroyed()) w.show(); });
@@ -110,41 +106,45 @@ async function openCapture() {
 }
 
 function showResult(dataUrl) {
-    if (resultWindow) resultWindow.close();
+    if (resultWindow && !resultWindow.isDestroyed()) resultWindow.close();
 
-    resultWindow = new BrowserWindow({
+    // Capture `win` in a local variable so the did-finish-load callback never closes over
+    // the outer `resultWindow` reference, which may be nulled by a prior window's close handler.
+    const win = new BrowserWindow({
         width: 500, height: 540,
         frame: true, alwaysOnTop: true, resizable: true,
         title: 'Math Solution',
         icon: path.join(__dirname, 'icon.png'),
         webPreferences: { nodeIntegration: true, contextIsolation: false }
     });
-    resultWindow.setMenuBarVisibility(false);
-    resultWindow.loadFile('index.html');
-    resultWindow.on('closed', () => { resultWindow = null; });
-    resultWindow.webContents.once('did-finish-load', () => {
-        resultWindow.webContents.send('process-screenshot', dataUrl);
+    resultWindow = win;
+    win.setMenuBarVisibility(false);
+    win.loadFile('index.html');
+    win.on('closed', () => { if (resultWindow === win) resultWindow = null; });
+    win.webContents.once('did-finish-load', () => {
+        if (!win.isDestroyed()) win.webContents.send('process-screenshot', dataUrl);
     });
 }
 
 app.whenReady().then(() => {
     createTray();
 
-    // Register both hotkeys simultaneously — Win key unreliable on some Bluetooth keyboards
-    const ok1 = globalShortcut.register('Shift+Super+W',           openCapture);
-    const ok2 = globalShortcut.register('CommandOrControl+Shift+Z', openCapture);
-
-    const active = [ok1 && 'Shift+Win+W', ok2 && 'Ctrl+Shift+Z'].filter(Boolean).join('  or  ');
-    tray.setToolTip(`Math Screenshot Solver\n${active || 'Click tray icon'} to capture`);
+    const ok = globalShortcut.register('Shift+Super+W', openCapture);
+    tray.setToolTip(
+        ok ? 'Math Screenshot Solver\nShift+Win+W to capture'
+           : 'Math Screenshot Solver\nClick tray icon to capture'
+    );
 });
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
 
-// OCR in main process — worker_threads work reliably here, not in Electron renderer
+// OCR in main process — worker_threads work reliably here
 ipcMain.handle('ocr-image', async (_, dataUrl) => {
     const worker = await Tesseract.createWorker('eng');
     await worker.setParameters({
-        tessedit_pageseg_mode: '6',  // treat selection as a uniform block of text
+        tessedit_pageseg_mode: '6',       // Assume a uniform block of text
+        tessedit_char_whitelist: '',       // Allow all characters
+        preserve_interword_spaces: '1',
     });
     const { data: { text } } = await worker.recognize(dataUrl);
     await worker.terminate();
@@ -154,7 +154,6 @@ ipcMain.handle('ocr-image', async (_, dataUrl) => {
 ipcMain.on('open-capture',  () => openCapture());
 ipcMain.on('close-capture', () => closeAllCaptureWindows());
 
-// Renderer crops and preprocesses the image, then sends the final data URL here
 ipcMain.on('selection-captured', (_, dataUrl) => {
     closeAllCaptureWindows();
     showResult(dataUrl);

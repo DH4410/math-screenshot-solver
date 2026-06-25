@@ -1,7 +1,7 @@
 const { ipcRenderer } = require('electron');
 
 let screenshotDataUrl = null;
-let scaleX = 1, scaleY = 1;   // thumb pixels per CSS pixel
+let scaleX = 1, scaleY = 1;
 let isDrawing = false;
 let startX, startY;
 
@@ -12,9 +12,6 @@ const sel  = document.getElementById('sel');
 
 ipcRenderer.on('init-capture', (_, { dataUrl, thumbW, thumbH }) => {
     screenshotDataUrl = dataUrl;
-    // window.innerWidth/Height = CSS pixels the window occupies on this display.
-    // thumbW/H = actual pixels in the screenshot.
-    // Their ratio is the correct scale for converting mouse coords → screenshot pixels.
     scaleX = thumbW / window.innerWidth;
     scaleY = thumbH / window.innerHeight;
     bg.style.backgroundImage = `url("${dataUrl}")`;
@@ -47,31 +44,16 @@ document.addEventListener('mouseup', (e) => {
 
     if (w < 5 || h < 5) { ipcRenderer.send('close-capture'); return; }
 
-    // Convert CSS pixel selection → screenshot physical pixel crop
     const cx = Math.round(l * scaleX), cy = Math.round(t * scaleY);
     const cw = Math.round(w * scaleX), ch = Math.round(h * scaleY);
 
     const crop = document.createElement('canvas');
     crop.width = cw; crop.height = ch;
-    const cropCtx = crop.getContext('2d');
 
     const img = new Image();
     img.onload = () => {
-        cropCtx.drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
-
-        // Upscale small crops — Tesseract needs at least ~100px height to read text reliably
-        let finalCanvas = crop;
-        if (ch < 120) {
-            const factor = Math.ceil(120 / ch);
-            finalCanvas = document.createElement('canvas');
-            finalCanvas.width  = cw * factor;
-            finalCanvas.height = ch * factor;
-            const ctx2 = finalCanvas.getContext('2d');
-            ctx2.imageSmoothingEnabled = false;
-            ctx2.drawImage(crop, 0, 0, finalCanvas.width, finalCanvas.height);
-        }
-
-        ipcRenderer.send('selection-captured', finalCanvas.toDataURL('image/png'));
+        crop.getContext('2d').drawImage(img, cx, cy, cw, ch, 0, 0, cw, ch);
+        ipcRenderer.send('selection-captured', preprocessForOCR(crop).toDataURL('image/png'));
     };
     img.src = screenshotDataUrl;
 });
@@ -79,3 +61,48 @@ document.addEventListener('mouseup', (e) => {
 document.addEventListener('keydown', e => {
     if (e.key === 'Escape') ipcRenderer.send('close-capture');
 });
+
+// Preprocess the cropped image for better Tesseract accuracy:
+// 1. Upscale to ≥ 300px tall  (Tesseract prefers ~300 dpi; screens are ~96 dpi)
+// 2. Convert to grayscale
+// 3. Auto-levels: stretch histogram to 0–255 so text is always high-contrast
+// 4. If background is dark, invert so text is dark-on-light (Tesseract reads this better)
+function preprocessForOCR(src) {
+    const TARGET_H = 300;
+    const scale = src.height < TARGET_H ? Math.ceil(TARGET_H / src.height) : 1;
+
+    const c = document.createElement('canvas');
+    c.width  = src.width  * scale;
+    c.height = src.height * scale;
+    const ctx = c.getContext('2d');
+    ctx.imageSmoothingEnabled = scale > 1;
+    ctx.drawImage(src, 0, 0, c.width, c.height);
+
+    const id = ctx.getImageData(0, 0, c.width, c.height);
+    const px = id.data;
+
+    // Convert to grayscale
+    const gray = new Uint8Array(c.width * c.height);
+    for (let i = 0, p = 0; i < px.length; i += 4, p++) {
+        gray[p] = (px[i] * 77 + px[i + 1] * 150 + px[i + 2] * 29) >> 8;
+    }
+
+    // Find histogram min/max for auto-levels
+    let lo = 255, hi = 0;
+    for (let v of gray) { if (v < lo) lo = v; if (v > hi) hi = v; }
+    const range = hi - lo || 1;
+
+    // Detect dark background (median pixel < 128 → invert for Tesseract)
+    const sorted = gray.slice().sort();
+    const median = sorted[Math.floor(sorted.length / 2)];
+    const invert = median < 128;
+
+    for (let i = 0, p = 0; i < px.length; i += 4, p++) {
+        let v = Math.round((gray[p] - lo) * 255 / range);
+        if (invert) v = 255 - v;
+        px[i] = px[i + 1] = px[i + 2] = v;
+    }
+
+    ctx.putImageData(id, 0, 0);
+    return c;
+}
