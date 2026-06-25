@@ -63,29 +63,6 @@
             font-family: monospace;
         }
 
-        .api-key-section {
-            margin-bottom: 20px;
-        }
-
-        .api-key-section label {
-            display: block;
-            margin-bottom: 5px;
-            color: #333;
-            font-weight: 600;
-        }
-
-        .api-key-section input {
-            width: 100%;
-            padding: 10px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
-            font-size: 14px;
-        }
-
-        .api-key-section input:focus {
-            outline: none;
-            border-color: #667eea;
-        }
 
         #screenshotPreview {
             flex: 1;
@@ -194,12 +171,7 @@
         <h1>📐 Math Screenshot Solver</h1>
         <div class="info">
             Press <kbd>Ctrl+Shift+S</kbd> to capture a screenshot, or click the button below.<br>
-            Get your API key from <a href="https://console.anthropic.com/" target="_blank">console.anthropic.com</a>
-        </div>
-
-        <div class="api-key-section">
-            <label for="apiKey">Anthropic API Key:</label>
-            <input type="password" id="apiKey" placeholder="sk-ant-...">
+            Equations are solved locally using <strong>math.js</strong> — no API key needed.
         </div>
 
         <div id="screenshotPreview" class="empty"></div>

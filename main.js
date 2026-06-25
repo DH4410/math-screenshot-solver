@@ -76,6 +76,10 @@ ipcMain.handle('get-screen-sources', async () => {
   return sources[0];
 });
 
+ipcMain.on('open-capture', () => {
+  createCaptureWindow();
+});
+
 ipcMain.on('close-capture', () => {
   if (captureWindow) {
     captureWindow.close();
