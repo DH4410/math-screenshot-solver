@@ -20,8 +20,16 @@
   },
   "build": {
     "appId": "com.math-screenshot-solver",
+    "productName": "MathScreenshotSolver",
+    "icon": "icon.ico",
+    "files": [
+      "**/*",
+      "!dist/**",
+      "!node_modules/electron-builder/**"
+    ],
     "win": {
-      "target": "nsis"
+      "target": "zip",
+      "icon": "icon.ico"
     }
   }
 }

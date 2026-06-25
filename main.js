@@ -1,97 +1,88 @@
-const { app, BrowserWindow, globalShortcut, screen, ipcMain, clipboard, desktopCapturer } = require('electron');
+const { app, BrowserWindow, globalShortcut, ipcMain, Tray, Menu } = require('electron');
 const path = require('path');
 
-let mainWindow;
-let captureWindow;
+let resultWindow = null;
+let captureWindow = null;
+let tray = null;
 
-function createMainWindow() {
-  mainWindow = new BrowserWindow({
-    width: 500,
-    height: 700,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    },
-    icon: path.join(__dirname, 'icon.png')
-  });
+app.setAppUserModelId('com.math-screenshot-solver');
 
-  mainWindow.loadFile('index.html');
-
-  mainWindow.on('closed', () => {
-    mainWindow = null;
-  });
+// Single instance — if a second instance launches, just open capture overlay
+const gotLock = app.requestSingleInstanceLock();
+if (!gotLock) {
+    app.quit();
+} else {
+    app.on('second-instance', () => {
+        openCapture();
+    });
 }
 
-function createCaptureWindow() {
-  const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+// Keep app alive in the tray even when all windows are closed
+app.on('window-all-closed', () => {});
 
-  captureWindow = new BrowserWindow({
-    fullscreen: true,
-    frame: false,
-    transparent: true,
-    alwaysOnTop: true,
-    skipTaskbar: true,
-    webPreferences: {
-      nodeIntegration: true,
-      contextIsolation: false
-    }
-  });
+function createTray() {
+    tray = new Tray(path.join(__dirname, 'icon.png'));
+    tray.setToolTip('Math Screenshot Solver\nCtrl+Win+W to capture');
+    tray.setContextMenu(Menu.buildFromTemplate([
+        { label: 'Math Screenshot Solver', enabled: false },
+        { type: 'separator' },
+        { label: 'Capture  (Ctrl+Win+W)', click: openCapture },
+        { type: 'separator' },
+        { label: 'Quit', click: () => app.quit() }
+    ]));
+    tray.on('click', openCapture);
+}
 
-  captureWindow.loadFile('capture.html');
+function openCapture() {
+    if (captureWindow) return;
+    captureWindow = new BrowserWindow({
+        fullscreen: true,
+        frame: false,
+        transparent: true,
+        alwaysOnTop: true,
+        skipTaskbar: true,
+        webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    captureWindow.loadFile('capture.html');
+    captureWindow.on('closed', () => { captureWindow = null; });
+}
 
-  captureWindow.on('closed', () => {
-    captureWindow = null;
-  });
+function showResult(dataUrl) {
+    if (resultWindow) resultWindow.close();
+
+    resultWindow = new BrowserWindow({
+        width: 500,
+        height: 540,
+        frame: true,
+        alwaysOnTop: true,
+        resizable: true,
+        title: 'Math Solution',
+        icon: path.join(__dirname, 'icon.png'),
+        webPreferences: { nodeIntegration: true, contextIsolation: false }
+    });
+    resultWindow.setMenuBarVisibility(false);
+    resultWindow.loadFile('index.html');
+    resultWindow.on('closed', () => { resultWindow = null; });
+    resultWindow.webContents.once('did-finish-load', () => {
+        resultWindow.webContents.send('process-screenshot', dataUrl);
+    });
 }
 
 app.whenReady().then(() => {
-  createMainWindow();
+    createTray();
 
-  globalShortcut.register('CommandOrControl+Shift+S', () => {
-    createCaptureWindow();
-  });
-});
-
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
-
-app.on('activate', () => {
-  if (mainWindow === null) {
-    createMainWindow();
-  }
+    // Ctrl+Win+W  (Super = Windows key on Windows)
+    const ok = globalShortcut.register('Control+Super+W', openCapture);
+    if (!ok) console.error('Could not register Ctrl+Win+W — key may be taken by the OS');
 });
 
 app.on('will-quit', () => {
-  globalShortcut.unregisterAll();
+    globalShortcut.unregisterAll();
 });
 
-ipcMain.handle('get-screen-sources', async () => {
-  const sources = await desktopCapturer.getSources({
-    types: ['screen'],
-    thumbnailSize: screen.getPrimaryDisplay().workAreaSize
-  });
-  return sources[0];
-});
-
-ipcMain.on('open-capture', () => {
-  createCaptureWindow();
-});
-
-ipcMain.on('close-capture', () => {
-  if (captureWindow) {
-    captureWindow.close();
-  }
-});
-
+ipcMain.on('open-capture', openCapture);
+ipcMain.on('close-capture', () => { if (captureWindow) captureWindow.close(); });
 ipcMain.on('screenshot-captured', (event, dataUrl) => {
-  if (captureWindow) {
-    captureWindow.close();
-  }
-  if (mainWindow) {
-    mainWindow.webContents.send('process-screenshot', dataUrl);
-    mainWindow.focus();
-  }
+    if (captureWindow) captureWindow.close();
+    showResult(dataUrl);
 });

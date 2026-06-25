@@ -3,193 +3,91 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Math Screenshot Solver</title>
+    <title>Math Solution</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 20px;
+            padding: 16px;
             height: 100vh;
             overflow: hidden;
         }
 
         .container {
             background: white;
-            border-radius: 15px;
-            padding: 30px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-            height: calc(100vh - 40px);
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
+            height: calc(100vh - 32px);
             display: flex;
             flex-direction: column;
+            gap: 12px;
         }
 
-        h1 {
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 24px;
-        }
+        h1 { color: #667eea; font-size: 20px; }
 
-        .info {
-            color: #666;
-            margin-bottom: 20px;
-            font-size: 14px;
-            padding: 10px;
-            background: #f0f0f0;
-            border-radius: 8px;
-            line-height: 1.5;
-        }
-
-        .info a {
-            color: #667eea;
-            text-decoration: none;
-            font-weight: 600;
-        }
-
-        .info a:hover {
-            text-decoration: underline;
-        }
-
-        .info kbd {
-            background: white;
-            padding: 3px 8px;
-            border-radius: 4px;
-            border: 1px solid #ccc;
-            font-family: monospace;
-        }
-
-
-        #screenshotPreview {
-            flex: 1;
-            border: 2px dashed #ddd;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            overflow: auto;
-            position: relative;
-        }
-
-        #screenshotPreview img {
-            max-width: 100%;
-            max-height: 100%;
-            object-fit: contain;
-        }
-
-        #screenshotPreview.empty::before {
-            content: 'Press Ctrl+Shift+S to capture screenshot';
-            color: #999;
-            font-size: 16px;
-        }
-
-        .result-section {
+        .section {
             background: #f8f9fa;
             border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 15px;
-            max-height: 200px;
+            padding: 12px;
             overflow-y: auto;
         }
 
-        .result-section h3 {
-            color: #667eea;
-            margin-bottom: 10px;
-            font-size: 16px;
-        }
+        .section h3 { color: #667eea; font-size: 13px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
+        .section p { color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
 
-        .result-section p {
-            color: #333;
-            line-height: 1.6;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-        }
+        #detectedSection { max-height: 90px; flex-shrink: 0; }
+        #solutionSection  { flex: 1; min-height: 0; }
 
-        .result-section.hidden {
-            display: none;
-        }
+        .hidden { display: none !important; }
 
-        .loading {
-            color: #667eea;
-            font-style: italic;
-        }
+        .loading { color: #667eea; font-style: italic; }
+        .error   { color: #dc3545; }
 
-        .error {
-            color: #dc3545;
-        }
-
-        .button-group {
-            display: flex;
-            gap: 10px;
-        }
+        .buttons { display: flex; gap: 8px; flex-shrink: 0; }
 
         button {
             flex: 1;
-            padding: 12px;
+            padding: 10px;
             border: none;
             border-radius: 8px;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 600;
             cursor: pointer;
-            transition: all 0.3s;
+            transition: background 0.2s, transform 0.1s;
         }
 
-        .btn-primary {
-            background: #667eea;
-            color: white;
-        }
+        .btn-primary  { background: #667eea; color: white; }
+        .btn-primary:hover  { background: #5568d3; }
+        .btn-secondary { background: #6c757d; color: white; }
+        .btn-secondary:hover { background: #5a6268; }
+        .btn-danger { background: #dc3545; color: white; }
+        .btn-danger:hover { background: #c82333; }
 
-        .btn-primary:hover {
-            background: #5568d3;
-            transform: translateY(-2px);
-        }
-
-        .btn-secondary {
-            background: #6c757d;
-            color: white;
-        }
-
-        .btn-secondary:hover {
-            background: #5a6268;
-            transform: translateY(-2px);
-        }
-
-        button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-            transform: none !important;
-        }
+        button:disabled { opacity: 0.45; cursor: not-allowed; }
+        button:active:not(:disabled) { transform: scale(0.97); }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>📐 Math Screenshot Solver</h1>
-        <div class="info">
-            Press <kbd>Ctrl+Shift+S</kbd> to capture a screenshot, or click the button below.<br>
-            Equations are solved locally using <strong>math.js</strong> — no API key needed.
-        </div>
+        <h1>📐 Math Solution</h1>
 
-        <div id="screenshotPreview" class="empty"></div>
-
-        <div id="detectedTextSection" class="result-section hidden">
-            <h3>Detected Text:</h3>
+        <div id="detectedSection" class="section hidden">
+            <h3>Detected Text</h3>
             <p id="detectedText"></p>
         </div>
 
-        <div id="resultSection" class="result-section hidden">
-            <h3>Solution:</h3>
-            <p id="resultText"></p>
+        <div id="solutionSection" class="section">
+            <h3>Solution</h3>
+            <p id="solutionText" class="loading">Waiting for screenshot…</p>
         </div>
 
-        <div class="button-group">
-            <button class="btn-primary" id="captureBtn">📸 Capture Screenshot</button>
-            <button class="btn-secondary" id="copyBtn" disabled>📋 Copy Answer</button>
-            <button class="btn-secondary" id="clearBtn" disabled>🗑️ Clear</button>
+        <div class="buttons">
+            <button class="btn-primary"   id="captureBtn">📸 New Capture</button>
+            <button class="btn-secondary" id="copyBtn" disabled>📋 Copy</button>
+            <button class="btn-danger"    id="closeBtn">✕ Close</button>
         </div>
     </div>
 
