@@ -14,7 +14,8 @@ const elements = {
     resultSection: document.getElementById('resultSection'),
     resultText: document.getElementById('resultText'),
     captureBtn: document.getElementById('captureBtn'),
-    copyBtn: document.getElementById('copyBtn')
+    copyBtn: document.getElementById('copyBtn'),
+    clearBtn: document.getElementById('clearBtn')
 };
 
 // Load saved API key
@@ -48,7 +49,9 @@ elements.captureBtn.addEventListener('click', () => {
     }, 100);
 });
 
-elements.copyBtn.addEventListener('click', () => {
+elements.copyBtn.addEventListener('click', copyAnswer);
+
+function copyAnswer() {
     if (currentAnswer) {
         clipboard.writeText(currentAnswer);
         const originalText = elements.copyBtn.textContent;
@@ -56,6 +59,34 @@ elements.copyBtn.addEventListener('click', () => {
         setTimeout(() => {
             elements.copyBtn.textContent = originalText;
         }, 2000);
+    }
+}
+
+elements.clearBtn.addEventListener('click', clearResults);
+
+function clearResults() {
+    currentScreenshot = null;
+    currentAnswer = null;
+    elements.screenshotPreview.innerHTML = '';
+    elements.screenshotPreview.classList.add('empty');
+    elements.detectedTextSection.classList.add('hidden');
+    elements.detectedText.textContent = '';
+    elements.resultSection.classList.add('hidden');
+    elements.resultText.textContent = '';
+    elements.copyBtn.disabled = true;
+    elements.clearBtn.disabled = true;
+}
+
+// Keyboard shortcuts
+document.addEventListener('keydown', (e) => {
+    // Ctrl+C to copy answer when available
+    if (e.ctrlKey && e.key === 'c' && currentAnswer && !elements.copyBtn.disabled) {
+        e.preventDefault();
+        copyAnswer();
+    }
+    // Escape to clear
+    if (e.key === 'Escape' && currentScreenshot) {
+        clearResults();
     }
 });
 
@@ -69,6 +100,7 @@ ipcRenderer.on('process-screenshot', async (event, dataUrl) => {
     elements.resultText.className = 'loading';
     elements.resultText.textContent = 'Detecting text in screenshot...';
     elements.copyBtn.disabled = true;
+    elements.clearBtn.disabled = false;
 
     try {
         const ocrResult = await performOCR(dataUrl);
