@@ -1,0 +1,27 @@
+{
+  "name": "math-screenshot-solver",
+  "version": "1.0.0",
+  "description": "Screenshot tool that detects and solves math equations",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder"
+  },
+  "keywords": ["math", "screenshot", "solver", "ocr"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.9.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.30.1",
+    "tesseract.js": "^5.0.4"
+  },
+  "build": {
+    "appId": "com.math-screenshot-solver",
+    "win": {
+      "target": "nsis"
+    }
+  }
+}

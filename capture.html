@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Capture</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            cursor: crosshair;
+            overflow: hidden;
+        }
+
+        #overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+        }
+
+        #canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            z-index: 1001;
+        }
+
+        #selection {
+            position: fixed;
+            border: 2px solid #667eea;
+            background: rgba(102, 126, 234, 0.1);
+            z-index: 1002;
+            display: none;
+        }
+
+        .instructions {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            z-index: 1003;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #333;
+        }
+
+        .instructions strong {
+            color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div id="overlay"></div>
+    <canvas id="canvas"></canvas>
+    <div id="selection"></div>
+    <div class="instructions">
+        <strong>Click and drag</strong> to select an area, or press <strong>ESC</strong> to cancel
+    </div>
+
+    <script src="capture-renderer.js"></script>
+</body>
+</html>

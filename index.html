@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Math Screenshot Solver</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            height: 100vh;
+            overflow: hidden;
+        }
+
+        .container {
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            height: calc(100vh - 40px);
+            display: flex;
+            flex-direction: column;
+        }
+
+        h1 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 24px;
+        }
+
+        .info {
+            color: #666;
+            margin-bottom: 20px;
+            font-size: 14px;
+            padding: 10px;
+            background: #f0f0f0;
+            border-radius: 8px;
+        }
+
+        .info kbd {
+            background: white;
+            padding: 3px 8px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            font-family: monospace;
+        }
+
+        .api-key-section {
+            margin-bottom: 20px;
+        }
+
+        .api-key-section label {
+            display: block;
+            margin-bottom: 5px;
+            color: #333;
+            font-weight: 600;
+        }
+
+        .api-key-section input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+        }
+
+        .api-key-section input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        #screenshotPreview {
+            flex: 1;
+            border: 2px dashed #ddd;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: auto;
+            position: relative;
+        }
+
+        #screenshotPreview img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+        }
+
+        #screenshotPreview.empty::before {
+            content: 'Press Ctrl+Shift+S to capture screenshot';
+            color: #999;
+            font-size: 16px;
+        }
+
+        .result-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .result-section h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 16px;
+        }
+
+        .result-section p {
+            color: #333;
+            line-height: 1.6;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+        }
+
+        .result-section.hidden {
+            display: none;
+        }
+
+        .loading {
+            color: #667eea;
+            font-style: italic;
+        }
+
+        .error {
+            color: #dc3545;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+        }
+
+        .btn-secondary:hover {
+            background: #5a6268;
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📐 Math Screenshot Solver</h1>
+        <div class="info">
+            Press <kbd>Ctrl+Shift+S</kbd> to capture a screenshot, or click the button below
+        </div>
+
+        <div class="api-key-section">
+            <label for="apiKey">Anthropic API Key:</label>
+            <input type="password" id="apiKey" placeholder="sk-ant-...">
+        </div>
+
+        <div id="screenshotPreview" class="empty"></div>
+
+        <div id="resultSection" class="result-section hidden">
+            <h3>Solution:</h3>
+            <p id="resultText"></p>
+        </div>
+
+        <div class="button-group">
+            <button class="btn-primary" id="captureBtn">📸 Capture Screenshot</button>
+            <button class="btn-secondary" id="copyBtn" disabled>📋 Copy Answer</button>
+        </div>
+    </div>
+
+    <script src="renderer.js"></script>
+</body>
+</html>
