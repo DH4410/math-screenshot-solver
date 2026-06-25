@@ -2,94 +2,130 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Math Solution</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            padding: 16px;
+            font-family: 'Segoe UI', sans-serif;
+            background: #f5f5f5;
             height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            padding: 14px 16px 12px;
+            border-bottom: 1px solid #e0e0e0;
+            background: #fff;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        header span {
+            font-size: 14px;
+            font-weight: 600;
+            color: #111;
+            letter-spacing: -0.01em;
+        }
+
+        header .status {
+            font-size: 12px;
+            font-weight: 400;
+            color: #888;
+        }
+
+        .body {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 0;
             overflow: hidden;
         }
 
-        .container {
-            background: white;
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.3);
-            height: calc(100vh - 32px);
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
+        .block {
+            padding: 12px 16px;
+            border-bottom: 1px solid #e8e8e8;
+            background: #fff;
         }
 
-        h1 { color: #667eea; font-size: 20px; }
+        .block:last-child { border-bottom: none; }
 
-        .section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 12px;
-            overflow-y: auto;
+        .label {
+            font-size: 10px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: #aaa;
+            margin-bottom: 6px;
         }
 
-        .section h3 { color: #667eea; font-size: 13px; margin-bottom: 6px; text-transform: uppercase; letter-spacing: 0.5px; }
-        .section p { color: #333; font-size: 14px; line-height: 1.6; white-space: pre-wrap; word-wrap: break-word; }
+        .text {
+            font-size: 14px;
+            color: #222;
+            line-height: 1.55;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
 
-        #detectedSection { max-height: 90px; flex-shrink: 0; }
-        #solutionSection  { flex: 1; min-height: 0; }
+        #detectedSection { flex-shrink: 0; }
+        #solutionSection  { flex: 1; overflow-y: auto; }
 
         .hidden { display: none !important; }
 
-        .loading { color: #667eea; font-style: italic; }
-        .error   { color: #dc3545; }
+        .loading { color: #aaa; font-style: italic; }
+        .error   { color: #c0392b; }
 
-        .buttons { display: flex; gap: 8px; flex-shrink: 0; }
+        footer {
+            padding: 10px 12px;
+            border-top: 1px solid #e0e0e0;
+            background: #fff;
+            display: flex;
+            gap: 8px;
+        }
 
         button {
             flex: 1;
-            padding: 10px;
-            border: none;
-            border-radius: 8px;
+            padding: 8px 0;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            background: #fff;
+            color: #333;
             font-size: 13px;
-            font-weight: 600;
+            font-family: inherit;
             cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
         }
 
-        .btn-primary  { background: #667eea; color: white; }
-        .btn-primary:hover  { background: #5568d3; }
-        .btn-secondary { background: #6c757d; color: white; }
-        .btn-secondary:hover { background: #5a6268; }
-        .btn-danger { background: #dc3545; color: white; }
-        .btn-danger:hover { background: #c82333; }
+        button:hover:not(:disabled) { background: #f0f0f0; }
+        button:active:not(:disabled) { background: #e8e8e8; }
+        button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        button:disabled { opacity: 0.45; cursor: not-allowed; }
-        button:active:not(:disabled) { transform: scale(0.97); }
+        #copyBtn { font-weight: 600; border-color: #bbb; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>📐 Math Solution</h1>
+    <header>
+        <span>Math Solver</span>
+        <span class="status" id="statusLine">Ready</span>
+    </header>
 
-        <div id="detectedSection" class="section hidden">
-            <h3>Detected Text</h3>
-            <p id="detectedText"></p>
+    <div class="body">
+        <div class="block hidden" id="detectedSection">
+            <div class="label">Detected text</div>
+            <div class="text" id="detectedText"></div>
         </div>
-
-        <div id="solutionSection" class="section">
-            <h3>Solution</h3>
-            <p id="solutionText" class="loading">Waiting for screenshot…</p>
-        </div>
-
-        <div class="buttons">
-            <button class="btn-primary"   id="captureBtn">📸 New Capture</button>
-            <button class="btn-secondary" id="copyBtn" disabled>📋 Copy</button>
-            <button class="btn-danger"    id="closeBtn">✕ Close</button>
+        <div class="block" id="solutionSection">
+            <div class="label">Solution</div>
+            <div class="text loading" id="solutionText">Waiting for screenshot…</div>
         </div>
     </div>
+
+    <footer>
+        <button id="captureBtn">New capture</button>
+        <button id="copyBtn" disabled>Copy answer</button>
+        <button id="closeBtn">Close</button>
+    </footer>
 
     <script src="renderer.js"></script>
 </body>

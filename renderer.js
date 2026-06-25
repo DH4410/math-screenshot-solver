@@ -11,6 +11,7 @@ const el = {
     captureBtn:      document.getElementById('captureBtn'),
     copyBtn:         document.getElementById('copyBtn'),
     closeBtn:        document.getElementById('closeBtn'),
+    statusLine:      document.getElementById('statusLine'),
 };
 
 el.captureBtn.addEventListener('click', () => ipcRenderer.send('open-capture'));
@@ -37,39 +38,44 @@ ipcRenderer.on('process-screenshot', async (_, dataUrl) => {
     currentAnswer = null;
     el.copyBtn.disabled = true;
     el.detectedSection.classList.add('hidden');
-    el.solutionText.className = 'loading';
-    el.solutionText.textContent = 'Detecting text…';
+    el.solutionText.className = 'text loading';
+    el.solutionText.textContent = 'Reading…';
+    el.statusLine.textContent = 'Processing';
 
     try {
         const ocrText = await performOCR(dataUrl);
 
         if (!ocrText || ocrText.trim().length === 0) {
-            el.solutionText.className = 'error';
-            el.solutionText.textContent = 'No text detected. Try capturing a clearer area.';
+            el.solutionText.className = 'text error';
+            el.solutionText.textContent = 'No text detected. Try a larger or clearer selection.';
+            el.statusLine.textContent = 'No text found';
             return;
         }
 
         el.detectedSection.classList.remove('hidden');
         el.detectedText.textContent = ocrText;
-        el.solutionText.className = 'loading';
+        el.solutionText.className = 'text loading';
         el.solutionText.textContent = 'Solving…';
 
         const output = solveFromText(ocrText);
         if (!output) {
-            el.solutionText.className = '';
-            el.solutionText.textContent = 'No math expressions detected in this screenshot.';
+            el.solutionText.className = 'text';
+            el.solutionText.textContent = 'No math expression found.';
+            el.statusLine.textContent = 'Done';
             return;
         }
 
         currentAnswer = output;
-        el.solutionText.className = '';
+        el.solutionText.className = 'text';
         el.solutionText.textContent = output;
         el.copyBtn.disabled = false;
+        el.statusLine.textContent = 'Done';
 
     } catch (err) {
         console.error(err);
-        el.solutionText.className = 'error';
+        el.solutionText.className = 'text error';
         el.solutionText.textContent = `Error: ${err.message}`;
+        el.statusLine.textContent = 'Error';
     }
 });
 
