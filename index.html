@@ -62,9 +62,10 @@
         }
 
         .text {
-            font-size: 14px;
+            font-family: 'Cascadia Mono', 'Consolas', ui-monospace, monospace;
+            font-size: 13.5px;
             color: #222;
-            line-height: 1.55;
+            line-height: 1.6;
             white-space: pre-wrap;
             word-break: break-word;
         }
@@ -101,7 +102,14 @@
         button:active:not(:disabled) { background: #e8e8e8; }
         button:disabled { opacity: 0.4; cursor: not-allowed; }
 
-        #copyBtn { font-weight: 600; border-color: #bbb; }
+        #copyBtn {
+            font-weight: 600;
+            background: #0078d4;
+            border-color: #0078d4;
+            color: #fff;
+        }
+        #copyBtn:hover:not(:disabled) { background: #1a86d9; }
+        #copyBtn:active:not(:disabled) { background: #006cbe; }
     </style>
 </head>
 <body>

@@ -24,7 +24,7 @@ function createTray() {
     tray.setContextMenu(Menu.buildFromTemplate([
         { label: 'Math Screenshot Solver', enabled: false },
         { type: 'separator' },
-        { label: 'Capture  (Shift+Win+W)', click: openCapture },
+        { label: 'Capture  (Alt+Shift+S)', click: openCapture },
         { type: 'separator' },
         { label: 'Quit', click: () => app.quit() }
     ]));
@@ -52,10 +52,14 @@ async function openCapture() {
         return;
     }
 
-    const screenshots = displays.map((d, i) => {
-        const src = sources.find(s => String(s.display_id) === String(d.id)) || sources[i] || sources[0];
-        const { width: thumbW, height: thumbH } = src.thumbnail.getSize();
-        return { dataUrl: src.thumbnail.toDataURL(), thumbW, thumbH };
+    // Match each display to a screen source. display_id is unreliable on Windows, so we fall
+    // back to the closest native-resolution match and never reuse a source for two displays.
+    const used = new Set();
+    const screenshots = displays.map(d => {
+        const src = pickSource(d, sources, used);
+        if (src) used.add(src.id);
+        const { width: thumbW, height: thumbH } = src ? src.thumbnail.getSize() : { width: 1, height: 1 };
+        return { dataUrl: src ? src.thumbnail.toDataURL() : '', thumbW, thumbH };
     });
 
     const wins = [];
@@ -63,16 +67,15 @@ async function openCapture() {
     for (let i = 0; i < displays.length; i++) {
         const d = displays[i];
 
-        // BrowserWindow uses physical pixels on Windows; d.bounds is in logical (DIP) pixels.
-        // Multiply by scaleFactor to get the correct physical size for this display.
-        const physW = Math.round(d.bounds.width  * d.scaleFactor);
-        const physH = Math.round(d.bounds.height * d.scaleFactor);
-
+        // BrowserWindow bounds are device-independent (DIP) pixels — the same units as
+        // d.bounds. Do NOT multiply by scaleFactor, or the overlay overflows HiDPI screens
+        // and the drag-to-crop math goes wrong. The captured thumbnail is full native res;
+        // capture-renderer rescales the selection using thumbW/thumbH vs the window size.
         const win = new BrowserWindow({
             x: d.bounds.x,
             y: d.bounds.y,
-            width:  physW,
-            height: physH,
+            width:  d.bounds.width,
+            height: d.bounds.height,
             frame: false,
             transparent: false,
             backgroundColor: '#000000',
@@ -105,6 +108,27 @@ async function openCapture() {
     captureWindows = wins;
 }
 
+// Pick the screen source that belongs to `display`. Tries the OS-provided display_id first
+// (often empty/unreliable on Windows), then the unused source whose native resolution is
+// closest to this display's physical size. Index-based matching is avoided because
+// desktopCapturer source order does not track screen.getAllDisplays() order.
+function pickSource(display, sources, used) {
+    let s = sources.find(src =>
+        src.display_id && String(src.display_id) === String(display.id) && !used.has(src.id));
+    if (s) return s;
+
+    const targetW = display.bounds.width  * display.scaleFactor;
+    const targetH = display.bounds.height * display.scaleFactor;
+    let best = null, bestScore = Infinity;
+    for (const src of sources) {
+        if (used.has(src.id)) continue;
+        const { width, height } = src.thumbnail.getSize();
+        const score = Math.abs(width - targetW) + Math.abs(height - targetH);
+        if (score < bestScore) { bestScore = score; best = src; }
+    }
+    return best;
+}
+
 function showResult(dataUrl) {
     if (resultWindow && !resultWindow.isDestroyed()) resultWindow.close();
 
@@ -129,26 +153,95 @@ function showResult(dataUrl) {
 app.whenReady().then(() => {
     createTray();
 
-    const ok = globalShortcut.register('Shift+Super+W', openCapture);
+    // Alt+Shift+S: easy to reach, mirrors Snipping Tool's Win+Shift+S, and — unlike Win-key
+    // combos, which Windows reserves and silently swallows — registers AND fires reliably.
+    const HOTKEY = 'Alt+Shift+S';
+    const ok = globalShortcut.register(HOTKEY, openCapture);
+    if (!ok) console.error(`Failed to register global hotkey ${HOTKEY} (already in use?)`);
     tray.setToolTip(
-        ok ? 'Math Screenshot Solver\nShift+Win+W to capture'
-           : 'Math Screenshot Solver\nClick tray icon to capture'
+        ok ? `Math Screenshot Solver\n${HOTKEY} to capture`
+           : 'Math Screenshot Solver\nHotkey unavailable — click the tray icon to capture'
     );
 });
 
 app.on('will-quit', () => { globalShortcut.unregisterAll(); });
 
-// OCR in main process — worker_threads work reliably here
+function median(nums) {
+    if (!nums.length) return 0;
+    const s = nums.slice().sort((a, b) => a - b);
+    return s[Math.floor(s.length / 2)];
+}
+
+// Rebuild one OCR line as text, reconstructing exponents. Tesseract reads "x²" as a plain
+// "2", losing the power — but its symbol bounding boxes still show that the 2 is small and
+// sits above the baseline. We detect that and re-insert a "^" so the solver sees x^2.
+function reconstructLine(line) {
+    const words = line.words || [];
+    const all = [];
+    for (const w of words) for (const s of (w.symbols || [])) if (s.text && s.text.trim()) all.push(s);
+    if (!all.length) return (line.text || '').trim();
+
+    const medH = median(all.map(s => s.bbox.y1 - s.bbox.y0)) || 1;
+    const baseBottoms = all.filter(s => (s.bbox.y1 - s.bbox.y0) >= 0.7 * medH).map(s => s.bbox.y1);
+    const baseline = baseBottoms.length ? median(baseBottoms) : all[all.length - 1].bbox.y1;
+
+    let out = '', inSup = false, firstWord = true;
+    for (const w of words) {
+        if (!firstWord) out += ' ';
+        firstWord = false;
+        for (const s of (w.symbols || [])) {
+            if (!s.text || !s.text.trim()) continue;
+            const h = s.bbox.y1 - s.bbox.y0;
+            // A digit is an exponent if Tesseract flags it as a superscript, OR it is small
+            // and sits above the text baseline (the flag is not always set).
+            const raisedSmall = h <= 0.72 * medH && s.bbox.y1 <= baseline - 0.18 * medH;
+            const isSup = /^[0-9]$/.test(s.text) && (s.is_superscript === true || raisedSmall);
+            if (isSup && !inSup) { out += '^'; inSup = true; }
+            else if (!isSup && inSup) { inSup = false; }
+            out += s.text;
+        }
+    }
+    return out.trim();
+}
+
+function blocksToText(blocks) {
+    const lines = [];
+    for (const b of (blocks || []))
+        for (const p of (b.paragraphs || []))
+            for (const l of (p.lines || [])) {
+                const t = reconstructLine(l);
+                if (t.trim()) lines.push(t);
+            }
+    return lines.join('\n');
+}
+
+// OCR in main process — worker_threads work reliably here. We run the same image through
+// several page-segmentation modes and return each reading as a candidate; the renderer then
+// cross-checks them by picking whichever one actually parses as valid math.
 ipcMain.handle('ocr-image', async (_, dataUrl) => {
     const worker = await Tesseract.createWorker('eng');
     await worker.setParameters({
-        tessedit_pageseg_mode: '6',       // Assume a uniform block of text
         tessedit_char_whitelist: '',       // Allow all characters
         preserve_interword_spaces: '1',
     });
-    const { data: { text } } = await worker.recognize(dataUrl);
+
+    const candidates = [];
+    const seen = new Set();
+    for (const psm of ['6', '7', '11']) {   // uniform block · single line · sparse text
+        try {
+            await worker.setParameters({ tessedit_pageseg_mode: psm });
+            const { data } = await worker.recognize(dataUrl, {}, { blocks: true });
+            let text = (data.blocks && data.blocks.length) ? blocksToText(data.blocks) : '';
+            if (!text.trim()) text = (data.text || '').trim();
+            const key = text.replace(/\s+/g, '');
+            if (text.trim() && !seen.has(key)) {
+                seen.add(key);
+                candidates.push({ text, confidence: data.confidence || 0 });
+            }
+        } catch (_) { /* skip this pass */ }
+    }
     await worker.terminate();
-    return text;
+    return candidates;
 });
 
 ipcMain.on('open-capture',  () => openCapture());

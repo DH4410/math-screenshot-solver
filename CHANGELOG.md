@@ -2,6 +2,24 @@
 
 All notable changes to Math Screenshot Solver will be documented in this file.
 
+## [1.1.0] - 2026-06-27
+
+### Changed
+- Global hotkey is now `Alt+Shift+S` (the old `Shift+Win+W` is reserved by Windows and was
+  silently swallowed by the OS, so it never fired)
+
+### Added
+- Snipping-Tool-style capture overlay: floating toolbar, live pixel dimensions, corner handles
+- **Full screen** button on the overlay to grab an entire monitor in one click
+- Multi-pass OCR that cross-checks several readings and keeps whichever one parses as real math
+- Exponent recovery: a small raised digit (e.g. the `²` in `x²`) is reconstructed as `x^2`
+  using Tesseract's symbol bounding boxes
+- Otsu binarization in the OCR preprocessing pipeline for cleaner black-on-white text
+
+### Fixed
+- Multi-monitor capture: overlay no longer overflows HiDPI screens, and each monitor is now
+  matched to the correct screenshot (previously the wrong screen could appear on a monitor)
+
 ## [1.0.0] - 2026-06-25
 
 ### Added

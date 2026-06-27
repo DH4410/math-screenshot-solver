@@ -43,21 +43,30 @@ ipcRenderer.on('process-screenshot', async (_, dataUrl) => {
     el.statusLine.textContent = 'Processing';
 
     try {
-        const ocrText = await performOCR(dataUrl);
+        const candidates = await performOCR(dataUrl);
 
-        if (!ocrText || ocrText.trim().length === 0) {
+        if (!candidates || candidates.length === 0) {
             el.solutionText.className = 'text error';
             el.solutionText.textContent = 'No text detected. Try a larger or clearer selection.';
             el.statusLine.textContent = 'No text found';
             return;
         }
 
-        el.detectedSection.classList.remove('hidden');
-        el.detectedText.textContent = ocrText;
         el.solutionText.className = 'text loading';
         el.solutionText.textContent = 'Solving…';
 
-        const output = solveFromText(ocrText);
+        // Cross-check the OCR passes: prefer whichever reading parses to a real solution,
+        // breaking ties by Tesseract confidence. Fall back to the highest-confidence reading.
+        const ordered = candidates.slice().sort((a, b) => b.confidence - a.confidence);
+        let chosen = ordered[0], output = null;
+        for (const c of ordered) {
+            const sol = solveFromText(c.text);
+            if (sol) { chosen = c; output = sol; break; }
+        }
+
+        el.detectedSection.classList.remove('hidden');
+        el.detectedText.textContent = chosen.text;
+
         if (!output) {
             el.solutionText.className = 'text';
             el.solutionText.textContent = 'No math expression found.';
@@ -80,7 +89,8 @@ ipcRenderer.on('process-screenshot', async (_, dataUrl) => {
 });
 
 async function performOCR(imageData) {
-    // OCR runs in the main process (worker_threads work there, not in renderer)
+    // OCR runs in the main process (worker_threads work there, not in renderer).
+    // Returns an array of { text, confidence } candidates from several OCR passes.
     return await ipcRenderer.invoke('ocr-image', imageData);
 }
 
@@ -101,7 +111,7 @@ function solveEquation(lhsRaw, rhsRaw) {
     const lhs = normalizeExpr(lhsRaw);
     const rhs = normalizeExpr(rhsRaw);
 
-    const varMatch = (lhs + rhs).match(/[a-df-wyzA-Z]/);
+    const varMatch = (lhs + rhs).match(/[a-df-zA-Z]/);   // any letter except 'e' (Euler's number)
     if (!varMatch) {
         try {
             const l = math.evaluate(lhs);
@@ -112,27 +122,50 @@ function solveEquation(lhsRaw, rhsRaw) {
     }
 
     const v = varMatch[0];
-    const f = (val) => {
-        const scope = { [v]: val };
-        return math.evaluate(lhs, scope) - math.evaluate(rhs, scope);
+    const roots = findRoots(lhs, rhs, v);
+    if (!roots.length) return null;
+    return roots.map(r => `${v} = ${r}`).join('   or   ');
+}
+
+// Find the real roots of (lhs - rhs) = 0 for variable v by sweeping the range for sign
+// changes and refining each bracket. Unlike a single bisection this catches quadratics
+// (x^2 = 9 → ±3) and multiple roots. Expressions are compiled once so the sweep stays fast,
+// and candidate roots are re-checked so poles/asymptotes aren't reported as solutions.
+function findRoots(lhs, rhs, v) {
+    let lc, rc;
+    try { lc = math.compile(lhs); rc = math.compile(rhs); } catch (_) { return []; }
+    const f = (x) => lc.evaluate({ [v]: x }) - rc.evaluate({ [v]: x });
+
+    const LO = -1000, HI = 1000, STEPS = 2000;
+    const roots = [];
+    const addRoot = (x) => {
+        let fx; try { fx = f(x); } catch (_) { return; }
+        if (!Number.isFinite(fx) || Math.abs(fx) > 1e-3) return;   // reject poles/asymptotes
+        const r = parseFloat(x.toPrecision(10));
+        const disp = Number.isInteger(r) ? r : parseFloat(r.toFixed(6));
+        if (!roots.some(e => Math.abs(e - disp) < 1e-4)) roots.push(disp);
     };
 
-    try {
-        for (const [lo, hi] of [[-1e3, 1e3], [-1e6, 1e6]]) {
-            if (Math.sign(f(lo)) === Math.sign(f(hi))) continue;
-            let a = lo, b = hi;
-            for (let i = 0; i < 100; i++) {
-                const mid = (a + b) / 2;
-                if (Math.abs(f(mid)) < 1e-10) { a = b = mid; break; }
-                if (Math.sign(f(a)) !== Math.sign(f(mid))) b = mid;
-                else a = mid;
+    let prevX = LO, prevY; try { prevY = f(LO); } catch (_) { prevY = NaN; }
+    for (let i = 1; i <= STEPS; i++) {
+        const x = LO + (HI - LO) * i / STEPS;
+        let y; try { y = f(x); } catch (_) { y = NaN; }
+        if (Number.isFinite(prevY) && Number.isFinite(y)) {
+            if (prevY === 0) addRoot(prevX);
+            else if (Math.sign(prevY) !== Math.sign(y) && y !== 0) {
+                let a = prevX, b = x, fa = prevY;
+                for (let k = 0; k < 80; k++) {
+                    const m = (a + b) / 2, fm = f(m);
+                    if (fm === 0 || Math.abs(b - a) < 1e-12) { a = b = m; break; }
+                    if (Math.sign(fa) !== Math.sign(fm)) b = m; else { a = m; fa = fm; }
+                }
+                addRoot((a + b) / 2);
             }
-            const root = (a + b) / 2;
-            const display = parseFloat(root.toPrecision(10));
-            return `${v} = ${Number.isInteger(display) ? display : parseFloat(display.toFixed(6))}`;
         }
-    } catch (_) {}
-    return null;
+        prevX = x; prevY = y;
+    }
+    if (Number.isFinite(prevY) && prevY === 0) addRoot(prevX);
+    return roots;
 }
 
 function solveFromText(text) {
@@ -151,7 +184,7 @@ function solveFromText(text) {
             if (solved) results.push(`${line}\n  → ${solved}`);
         } else {
             const norm = normalizeExpr(line);
-            if (/[a-df-wyzA-Z]/.test(norm)) continue;
+            if (/[a-df-zA-Z]/.test(norm)) continue;
             try {
                 const val = math.evaluate(norm);
                 if (typeof val === 'number' || val?.isComplex) {

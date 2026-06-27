@@ -1,6 +1,6 @@
 {
   "name": "math-screenshot-solver",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Screenshot tool that detects and solves math equations",
   "main": "main.js",
   "scripts": {

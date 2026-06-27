@@ -3,38 +3,86 @@
 <head>
 <meta charset="UTF-8">
 <style>
+:root { --accent:#0078d4; }
 * { margin:0; padding:0; box-sizing:border-box; }
-body { overflow:hidden; width:100vw; height:100vh; cursor:crosshair; user-select:none; }
-
-/* Screenshot fills the entire window as background */
-#bg { position:fixed; inset:0; background-size:100% 100%; background-repeat:no-repeat; }
-
-/* Semi-transparent dim layer over the screenshot (hidden once dragging starts) */
-#dim { position:fixed; inset:0; background:rgba(0,0,0,0.38); }
-
-#hint {
-    position:fixed; top:20px; left:50%; transform:translateX(-50%);
-    background:rgba(0,0,0,0.65); color:#fff;
-    padding:8px 20px; border-radius:6px;
-    font-family:'Segoe UI',sans-serif; font-size:14px;
-    pointer-events:none; white-space:nowrap; z-index:10;
+body {
+    overflow:hidden; width:100vw; height:100vh;
+    cursor:crosshair; user-select:none;
+    font-family:'Segoe UI',sans-serif;
 }
 
-/* Selection box: transparent inside, box-shadow dims everything outside */
+/* Screenshot fills the entire window as background */
+#bg  { position:fixed; inset:0; background-size:100% 100%; background-repeat:no-repeat; }
+
+/* Semi-transparent dim layer over the screenshot (hidden once dragging starts) */
+#dim { position:fixed; inset:0; background:rgba(0,0,0,0.35); }
+
+/* Snipping-Tool-style floating toolbar, top center */
+#toolbar {
+    position:fixed; top:22px; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; gap:2px;
+    background:#2b2b2b; color:#fff;
+    padding:6px; border-radius:11px;
+    box-shadow:0 8px 28px rgba(0,0,0,0.5);
+    z-index:20; cursor:default;
+}
+#toolbar .title {
+    font-size:13px; padding:0 12px 0 9px;
+    opacity:0.8; white-space:nowrap;
+}
+#toolbar button {
+    display:flex; align-items:center; gap:7px;
+    background:transparent; color:#fff; border:none;
+    font-family:inherit; font-size:13px; line-height:1;
+    padding:8px 12px; border-radius:7px; cursor:pointer;
+}
+#toolbar button:hover { background:rgba(255,255,255,0.14); }
+#toolbar button.primary { background:var(--accent); }
+#toolbar button.primary:hover { background:#1a86d9; }
+#toolbar .sep { width:1px; height:20px; background:rgba(255,255,255,0.18); margin:0 4px; }
+
+/* Selection rectangle: transparent inside, box-shadow dims everything outside */
 #sel {
     position:fixed; display:none;
-    border:2px solid #4fc3f7;
+    border:2px solid var(--accent);
     background:transparent;
-    box-shadow:0 0 0 9999px rgba(0,0,0,0.5);
+    box-shadow:0 0 0 9999px rgba(0,0,0,0.45);
     z-index:5;
+}
+#sel .h {
+    position:absolute; width:9px; height:9px;
+    background:#fff; border:1.5px solid var(--accent); border-radius:50%;
+}
+#sel .tl{left:-5px;top:-5px}   #sel .tr{right:-5px;top:-5px}
+#sel .bl{left:-5px;bottom:-5px} #sel .br{right:-5px;bottom:-5px}
+
+/* Live dimensions readout next to the selection */
+#size {
+    position:fixed; display:none; z-index:8;
+    background:#2b2b2b; color:#fff;
+    font-size:12px; font-variant-numeric:tabular-nums;
+    padding:3px 8px; border-radius:5px;
+    pointer-events:none; white-space:nowrap;
 }
 </style>
 </head>
 <body>
 <div id="bg"></div>
 <div id="dim"></div>
-<div id="hint">Drag to select &nbsp;·&nbsp; ESC to cancel</div>
-<div id="sel"></div>
+
+<div id="toolbar">
+    <span class="title">Drag to select an equation</span>
+    <button id="fullBtn" class="primary" title="Capture this entire screen">&#9974; Full screen</button>
+    <span class="sep"></span>
+    <button id="cancelBtn" title="Cancel (Esc)">&#10005; Cancel</button>
+</div>
+
+<div id="sel">
+    <span class="h tl"></span><span class="h tr"></span>
+    <span class="h bl"></span><span class="h br"></span>
+</div>
+<div id="size"></div>
+
 <script src="capture-renderer.js"></script>
 </body>
 </html>

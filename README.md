@@ -4,7 +4,7 @@ A Windows desktop application that captures screenshots and automatically detect
 
 ## Features
 
-- **Screenshot Capture**: Press `Ctrl+Shift+S` or click the capture button to take a screenshot
+- **Screenshot Capture**: Press `Alt+Shift+S` or click the capture button to take a screenshot
 - **Drag-and-Select**: Select the specific area containing math equations (similar to Windows Snipping Tool)
 - **OCR Detection**: Automatically extracts text from screenshots using Tesseract.js
 - **Text Display**: Shows the detected text before solving for verification
@@ -13,7 +13,7 @@ A Windows desktop application that captures screenshots and automatically detect
 - **Visual Feedback**: See your captured screenshot and solution in a clean, modern interface
 - **Persistent API Key**: Your API key is saved locally for convenience
 - **Keyboard Shortcuts**: 
-  - `Ctrl+Shift+S` - Capture screenshot
+  - `Alt+Shift+S` - Capture screenshot
   - `Ctrl+C` - Copy answer (when solution is available)
   - `ESC` - Clear results or cancel capture
 - **Error Handling**: Clear error messages for API issues, invalid keys, and rate limits
@@ -38,7 +38,7 @@ npm start
 
 1. Launch the application
 2. Enter your Anthropic API key from [console.anthropic.com](https://console.anthropic.com/) (one-time setup, saved locally)
-3. Press `Ctrl+Shift+S` or click "📸 Capture Screenshot"
+3. Press `Alt+Shift+S` or click "📸 Capture Screenshot"
 4. Click and drag to select the area with the math equation (press `ESC` to cancel)
 5. Wait for the app to:
    - Extract text using OCR (shows progress)
