@@ -35,6 +35,7 @@ async function openCapture() {
     if (captureWindows.length > 0) return;
 
     const displays = screen.getAllDisplays();
+    console.log('[capture] displays:', JSON.stringify(displays.map(d => ({ b: d.bounds, s: d.scaleFactor }))));
 
     // Request at each display's physical resolution — thumbnailSize is a cap, not a target,
     // so Electron will not upscale beyond native resolution.
@@ -103,7 +104,15 @@ async function openCapture() {
 
     await new Promise(r => setTimeout(r, 80));
 
-    wins.forEach(w => { if (!w.isDestroyed()) w.show(); });
+    wins.forEach((w, i) => {
+        if (w.isDestroyed()) return;
+        w.show();
+        // Re-assert full-display bounds now that the window is actually on its target monitor.
+        // This defeats an Electron/Windows bug where a window created for a secondary monitor
+        // whose scale factor differs from the primary comes out the wrong size (too small),
+        // leaving part of the screen uncovered instead of greying the whole display.
+        w.setBounds(displays[i].bounds);
+    });
     if (wins[0] && !wins[0].isDestroyed()) wins[0].focus();
     captureWindows = wins;
 }

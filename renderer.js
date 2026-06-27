@@ -78,7 +78,8 @@ ipcRenderer.on('process-screenshot', async (_, dataUrl) => {
         el.solutionText.className = 'text';
         el.solutionText.textContent = output;
         el.copyBtn.disabled = false;
-        el.statusLine.textContent = 'Done';
+        clipboard.writeText(output);                 // auto-copy so no extra click is needed
+        el.statusLine.textContent = 'Done · copied to clipboard';
 
     } catch (err) {
         console.error(err);
@@ -101,6 +102,7 @@ function normalizeExpr(str) {
         .replace(/−/g, '-')
         .replace(/²/g, '^2')
         .replace(/³/g, '^3')
+        .replace(/(\d)\s*[xX]\s*(\d)/g, '$1*$2')   // OCR reads the × sign as 'x' between numbers
         .replace(/(\d)\s+(\d)/g, '$1$2')
         .replace(/(\d)([a-zA-Z])/g, '$1*$2')
         .replace(/([a-zA-Z])(\d)/g, '$1*$2')

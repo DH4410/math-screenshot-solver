@@ -2,6 +2,18 @@
 
 All notable changes to Math Screenshot Solver will be documented in this file.
 
+## [1.1.1] - 2026-06-27
+
+### Added
+- Answer is now copied to the clipboard automatically on solve (the Copy button still works)
+
+### Fixed
+- `x` between two numbers is treated as multiplication (`12x 45` → `12 × 45 = 540`), since OCR
+  reads the `×` sign as `x`; genuine algebra like `2x = 10` is unaffected
+- Capture overlay now re-asserts full-display bounds after showing, so it greys the *whole*
+  monitor (previously a secondary monitor at a different DPI than the primary could be only
+  partly covered). Logs display topology to the terminal to aid debugging
+
 ## [1.1.0] - 2026-06-27
 
 ### Changed
