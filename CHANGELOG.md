@@ -12,8 +12,10 @@ All notable changes to Math Screenshot Solver will be documented in this file.
 - Snipping-Tool-style capture overlay: floating toolbar, live pixel dimensions, corner handles
 - **Full screen** button on the overlay to grab an entire monitor in one click
 - Multi-pass OCR that cross-checks several readings and keeps whichever one parses as real math
-- Exponent recovery: a small raised digit (e.g. the `²` in `x²`) is reconstructed as `x^2`
-  using Tesseract's symbol bounding boxes
+- Best-effort exponent recovery: when an OCR pass does read a raised digit, it is rebuilt as a
+  power (`x^2`). Caveat — offline OCR (Tesseract) frequently drops or misreads small
+  superscripts entirely, so powers/squares are still unreliable; reading them dependably needs
+  a vision model
 - Otsu binarization in the OCR preprocessing pipeline for cleaner black-on-white text
 
 ### Fixed

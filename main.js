@@ -172,9 +172,10 @@ function median(nums) {
     return s[Math.floor(s.length / 2)];
 }
 
-// Rebuild one OCR line as text, reconstructing exponents. Tesseract reads "x²" as a plain
-// "2", losing the power — but its symbol bounding boxes still show that the 2 is small and
-// sits above the baseline. We detect that and re-insert a "^" so the solver sees x^2.
+// Rebuild one OCR line as text, with best-effort exponent recovery: if an OCR pass reads a
+// small digit raised above the baseline (or flags it as a superscript), re-insert a "^" so
+// the solver sees x^2. Caveat: offline OCR often drops or misreads small superscripts
+// outright, so this only helps when the raised digit was actually recognized as a digit.
 function reconstructLine(line) {
     const words = line.words || [];
     const all = [];
